@@ -1,0 +1,17 @@
+{
+  "name": "ai-scrapper",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "compromise": "^14.14.0",
+    "jsdom": "^25.0.0",
+    "natural": "^8.0.1",
+    "puppeteer": "^23.3.0"
+  }
+}
