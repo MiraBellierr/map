@@ -448,8 +448,8 @@ async function scrapeSearchResults(query) {
     await page.click("#submit-llm-button");
   }
 
-  const maxWaitTime = 30000; // 30 seconds
-  const interval = 1000; // Check every second
+  const maxWaitTime = 30000;
+  const interval = 1000;
   let elapsed = 0;
 
   while (elapsed < maxWaitTime) {
@@ -483,4 +483,4 @@ async function scrapeSearchResults(query) {
   return convert(content);
 }
 
-client.login('MTI4Mjc3ODI2ODc2MzY4OTA0Mg.GWxBDo.7t3KW1qRcRwCQB8_3VMuUGczRrhBIv7ofMJW3o'); // Replace with your actual bot token
+client.login('MTI4Mjc3ODI2ODc2MzY4OTA0Mg.GWxBDo.7t3KW1qRcRwCQB8_3VMuUGczRrhBIv7ofMJW3o');
