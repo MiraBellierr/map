@@ -286,6 +286,7 @@ client.once('ready', async () => {
   const browser = await puppeteerExtra.launch({
     headless: true, 
     userDataDir: path.resolve('./puppeteer_data'),
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
 
   const page = await browser.newPage();
@@ -424,7 +425,7 @@ async function scrapeSearchResults(query) {
   const browser = await puppeteerExtra.launch({
     headless: true, 
     userDataDir: path.resolve('./puppeteer_data'),
-    args: ['--headless=old']
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
   const page = await browser.newPage();
   await page.setViewport({ width: 1920, height: 1080 });
