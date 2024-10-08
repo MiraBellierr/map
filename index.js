@@ -285,6 +285,7 @@ async function processQueue() {
 client.once('ready', async () => {
   const browser = await puppeteerExtra.launch({
     headless: true, 
+    executablePath: '/usr/bin/chromium-browser',
     userDataDir: path.resolve('./puppeteer_data'),
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
@@ -424,6 +425,7 @@ client.on('messageCreate', async message => {
 async function scrapeSearchResults(query) {
   const browser = await puppeteerExtra.launch({
     headless: true, 
+    executablePath: '/usr/bin/chromium-browser',
     userDataDir: path.resolve('./puppeteer_data'),
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
