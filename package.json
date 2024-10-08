@@ -9,9 +9,12 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "compromise": "^14.14.0",
-    "jsdom": "^25.0.0",
-    "natural": "^8.0.1",
-    "puppeteer": "^23.3.0"
+    "clarifai-nodejs-grpc": "^10.8.7",
+    "discord.js": "^14.16.3",
+    "html-to-text": "^9.0.5",
+    "katex": "^0.16.11",
+    "puppeteer": "^23.3.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
 }
