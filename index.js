@@ -469,34 +469,10 @@ async function scrapeSearchResults(query) {
 		await page.click("#submit-llm-button");
 	}
 
-	const maxWaitTime = 30000;
-	const interval = 1000;
-	let elapsed = 0;
-
-	while (elapsed < maxWaitTime) {
-		const [hasClassDone, hasClassUnavailable] = await page.evaluate(() => {
-			const button = document.querySelector("#submit-llm-button");
-			return [
-				button && button.classList.contains("done"),
-				button && button.classList.contains("unavailable"),
-			];
-		});
-
-		if (hasClassUnavailable) {
-			await browser.close();
-			return "error generating answers";
-		}
-
-		if (hasClassDone) {
-			break;
-		}
-
-		await wait(interval);
-		elapsed += interval;
-	}
+	await wait(5000);
 
 	const content = await page.evaluate(() => {
-		const element = document.querySelector("#chatllm-content > div");
+		const element = document.querySelector(".llm-output");
 		return element ? element.innerHTML : null;
 	});
 
