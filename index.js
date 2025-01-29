@@ -1,6 +1,6 @@
 const puppeteerExtra = require("puppeteer-extra");
 const Stealth = require("puppeteer-extra-plugin-stealth");
-const { Client, GatewayIntentBits } = require("discord.js");
+const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, EmbedBuilder } = require("discord.js");
 const path = require("path");
 const { convert } = require("html-to-text");
 const remember = "./remember.json";
@@ -24,7 +24,7 @@ const client = new Client({
 		repliedUser: false,
 	},
 	page: "",
-	personality: "nice",
+	personality: "rude",
 	remember: "None",
 });
 
@@ -73,83 +73,113 @@ function wait(ms) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function displayJsonAsString() {
-	try {
-		const data = await fs.readFile(remember, "utf-8");
+async function displayJsonAsString(guildID) {
+    try {
+        const data = await readJsonFile(guildID);
 
-		const parsedData = JSON.parse(data);
+        const filteredData = Object.fromEntries(
+            Object.entries(data).filter(
+                ([key]) => !["1", "2", "3", "4"].includes(key)
+            )
+        );
 
-		const filteredData = Object.fromEntries(
-			Object.entries(parsedData).filter(
-				([key]) => !["1", "2", "3", "4"].includes(key)
-			)
-		);
+        const jsonString = JSON.stringify(filteredData, null, 2);
 
-		const jsonString = JSON.stringify(filteredData, null, 2);
+        console.log(jsonString);
 
-		console.log(jsonString);
-
-		return jsonString;
-	} catch (err) {
-		console.error("Error reading the JSON file:", err);
-	}
+        return jsonString;
+    } catch (err) {
+        console.error("Error reading the JSON file:", err);
+    }
 }
 
-async function readJsonFile() {
-	try {
-		const data = await fs.readFile(remember, "utf-8");
-		return data ? JSON.parse(data) : {};
-	} catch (err) {
-		if (err.code === "ENOENT") {
-			return {};
-		} else {
-			throw err;
-		}
-	}
+async function displayJsonAsArray(guildID) {
+    try {
+        const data = await readJsonFile(guildID);
+
+        const filteredData = Object.entries(data).filter(
+            ([key]) => parseInt(key) >= 2
+        );
+
+        return filteredData;
+    } catch (err) {
+        console.error("Error reading the JSON file:", err);
+    }
 }
 
-async function writeJsonFile(data) {
-	await fs.writeFile(remember, JSON.stringify(data, null, 2), "utf-8");
+function generateEmbed(data, page, itemsPerPage) {
+    const start = page * itemsPerPage;
+    const end = start + itemsPerPage;
+    const pageData = data.slice(start, end);
 
-	client.remember = await getAllValuesAsString();
+    const description = pageData.map(([key, value]) => `${key}: ${value}`).join("\n");
+
+    const embed = new EmbedBuilder()
+        .setTitle("List of Items")
+        .setColor("#0099ff")
+        .setDescription(description)
+        .setFooter({ text: `Page ${page + 1} of ${Math.ceil(data.length / itemsPerPage)}` });
+
+    return embed;
 }
 
-async function getAllValuesAsString() {
-	const data = await readJsonFile();
-	const values = Object.values(data).join(",");
-	return values;
+async function readJsonFile(guildID) {
+    const guildFilePath = `./${guildID}.json`;
+    try {
+        const data = await fs.readFile(guildFilePath, "utf-8");
+        return data ? JSON.parse(data) : {};
+    } catch (err) {
+        if (err.code === "ENOENT") {
+            return {};
+        } else {
+            throw err;
+        }
+    }
 }
 
-async function addItemToJsonFile(newItem) {
-	const data = await readJsonFile();
-
-	const keys = Object.keys(data);
-	const newId =
-		keys.length > 0 ? Math.max(...keys.map((key) => Number(key))) + 1 : 1;
-
-	data[newId] = newItem;
-
-	await writeJsonFile(data);
-	return `Okay. Item ID is ${newId}. Please remember that!`;
+async function writeJsonFile(guildID, data) {
+    const guildFilePath = `./${guildID}.json`;
+    await fs.writeFile(guildFilePath, JSON.stringify(data, null, 2), "utf-8");
 }
 
-async function removeItemFromJsonFile(id) {
-	const data = await readJsonFile();
+async function getAllValuesAsString(guildID) {
+    const defaultData = await readJsonFile("default");
+    const guildData = await readGuildFile(guildID);
+    const combinedData = { ...defaultData, ...guildData };
+    const values = Object.values(combinedData).join(",");
+    return values;
+}
 
-	if (!data[id]) {
-		return `No item with ID ${id} found.`;
-	}
+async function addItemToJsonFile(guildID, newItem) {
+    const data = await readJsonFile(guildID);
 
-	if (parseInt(id) < 5) {
-		return `No item with ID ${id} found.`;
-	}
+    const keys = Object.keys(data);
+    const newId =
+        keys.length > 0 ? Math.max(...keys.map((key) => Number(key))) + 1 : 1;
 
-	const removedItem = data[id];
+    data[newId] = newItem;
 
-	delete data[id];
+    await writeJsonFile(guildID, data);
+    return `Okay. Item ID is ${newId}. Please remember that!`;
+}
 
-	await writeJsonFile(data);
-	return `Item with ID ${id} has been forgotten!\n\`${removedItem}\``;
+async function removeItemFromJsonFile(guildID, id) {
+    const data = await readJsonFile(guildID);
+
+    if (!data[id]) {
+        return `No item with ID ${id} found.`;
+    }
+
+    if (parseInt(id) < 5) {
+        return `No item with ID ${id} found.`;
+    }
+
+    const removedItem = data[id];
+
+    delete data[id];
+
+    await writeJsonFile(guildID, data);
+    return `Item with ID ${id} has been forgotten!\n\`${removedItem}\``;
 }
 
 function splitMessage(message) {
@@ -175,10 +205,12 @@ function splitMessage(message) {
 	return chunks;
 }
 
-async function chatBot(query) {
+async function chatBot(guild, query) {
 	const page = await client.page;
 	const personality = await client.personality;
-	const remember = await client.remember;
+	const remember = await getAllValuesAsString(guild.id);
+
+	console.log(remember);
 
 	const initialCount = await page.evaluate(() => {
 		return document.querySelectorAll("textarea.chatbox").length;
@@ -277,7 +309,7 @@ async function processQueue() {
 		if (search) {
 			result = await scrapeSearchResults(query);
 		} else {
-			result = await chatBot(query);
+			result = await chatBot(message.guild, query);
 		}
 		const messages = splitMessage(
 			result || "There was an error generating a response. Please try again."
@@ -326,8 +358,43 @@ client.once("ready", async () => {
 	channel.send(`I wake up.`);
 });
 
+async function checkAndCreateGuildFile(guildID, serverName) {
+    const guildFilePath = `./${guildID}.json`;
+    try {
+        await fs.access(guildFilePath);
+    } catch (err) {
+        if (err.code === "ENOENT") {
+            const initialData = {
+                "1": `You are in the server called ${serverName}.`,
+            };
+            await fs.writeFile(guildFilePath, JSON.stringify(initialData, null, 2), "utf-8");
+        } else {
+            throw err;
+        }
+    }
+}
+
+async function readGuildFile(guildID) {
+    const guildFilePath = `./${guildID}.json`;
+    try {
+        const data = await fs.readFile(guildFilePath, "utf-8");
+        return JSON.parse(data);
+    } catch (err) {
+        if (err.code === "ENOENT") {
+            return {};
+        } else {
+            throw err;
+        }
+    }
+}
+
 client.on("messageCreate", async (message) => {
 	if (message.author.bot) return;
+
+	const guildID = message.guild.id;
+    const serverName = message.guild.name;
+
+    await checkAndCreateGuildFile(guildID, serverName);
 
 	if (message.author.id === "548050617889980426") {
 		if (message.content.toLowerCase().startsWith("mood")) {
@@ -416,7 +483,7 @@ client.on("messageCreate", async (message) => {
 
 		if (!context) return message.reply("What should I remember?");
 
-		message.channel.send(await addItemToJsonFile(context));
+		message.channel.send(await addItemToJsonFile(guildID, context));
 	} else if (message.content.toLowerCase().startsWith("!forget")) {
 		const contextId = message.content.toLowerCase().replace("!forget ", "");
 
@@ -425,15 +492,66 @@ client.on("messageCreate", async (message) => {
 				"What should I forget? You need to give the ID though!"
 			);
 
-		message.channel.send(await removeItemFromJsonFile(contextId));
-	} else if (message.content.toLowerCase().startsWith("!list")) {
-		const list = await displayJsonAsString();
-		const listMessage = splitMessage(`${list}`);
+		if (parseInt(contextId) <= 1) {
+            return message.reply("Cannot determine ID.");
+        }
 
-		for (const mss of listMessage) {
-			await message.channel.send(`\`\`\`json\n${mss}\n\`\`\``);
-		}
-	}
+		message.channel.send(await removeItemFromJsonFile(guildID, contextId));
+	} else if (message.content.toLowerCase().startsWith("!list")) {
+        const data = await displayJsonAsArray(guildID);
+        const itemsPerPage = 10;
+        let page = 0;
+
+        const embed = generateEmbed(data, page, itemsPerPage);
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId("previous")
+                .setLabel("Previous")
+                .setStyle("Secondary")
+                .setDisabled(page === 0),
+            new ButtonBuilder()
+                .setCustomId("next")
+                .setLabel("Next")
+                .setStyle("Secondary")
+                .setDisabled(data.length <= itemsPerPage)
+        );
+
+        const listMessage = await message.channel.send({ embeds: [embed], components: [row] });
+
+        const filter = (interaction) => {
+            return interaction.user.id === message.author.id;
+        };
+
+        const collector = listMessage.createMessageComponentCollector({ filter, time: 60000 });
+
+        collector.on("collect", async (interaction) => {
+            if (interaction.customId === "previous") {
+                page--;
+            } else if (interaction.customId === "next") {
+                page++;
+            }
+
+            const newEmbed = generateEmbed(data, page, itemsPerPage);
+            const newRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId("previous")
+                    .setLabel("Previous")
+                    .setStyle("Secondary")
+                    .setDisabled(page === 0),
+                new ButtonBuilder()
+                    .setCustomId("next")
+                    .setLabel("Next")
+                    .setStyle("Secondary")
+                    .setDisabled(data.length <= (page + 1) * itemsPerPage)
+            );
+
+            await interaction.update({ embeds: [newEmbed], components: [newRow] });
+        });
+
+        collector.on("end", () => {
+            listMessage.edit({ components: [] });
+        });
+    }
 
 	if (query) {
 		queue.push({ message, query, search });
@@ -452,7 +570,7 @@ async function scrapeSearchResults(query) {
 	);
 
 	const searchURL = `https://search.brave.com/search?q=${encodeURIComponent(
-		query
+		`${query} in one sentence`
 	)}`;
 
 	await page.goto(searchURL);
