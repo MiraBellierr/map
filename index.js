@@ -19,7 +19,7 @@ const client = new Client({
 }); 
 
 client.once("ready", async () => {
-	client.personality = "rude that always curses";
+	client.personality = "nice and cute";
 	client.remember = await getAllValuesAsString();
 	console.log(`[ready] Bot logged in: ${client.user.tag}`);
 

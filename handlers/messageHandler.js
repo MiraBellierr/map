@@ -1,5 +1,5 @@
 const { ActionRowBuilder, ButtonBuilder } = require("discord.js");
-const { generateImageDescription, generateImageFromPrompt } = require("../services/ollamaService");
+const { chatBot, generateImageDescription, generateImageFromPrompt } = require("../services/ollamaService");
 const { 
     checkAndCreateGuildFile, 
     addItemToJsonFile, 
@@ -19,13 +19,43 @@ async function handleMessage(message) {
 
     const guildID = message.guild.id;
     const serverName = message.guild.name;
+    const contentLower = message.content.toLowerCase();
 
     await checkAndCreateGuildFile(guildID, serverName);
 
     // Mood command (owner only)
     if (message.author.id === "548050617889980426") {
-        if (message.content.toLowerCase().startsWith("mood")) {
-            const args = message.content.toLowerCase().split(" ");
+        const normalizedContent = contentLower.trim();
+
+        if (normalizedContent === "shut down") {
+            try {
+                await message.channel.sendTyping();
+                const farewell = await chatBot(
+                    message.guild,
+                    `(owner request) shut down now. Respond once in your current personality and say goodbye.`,
+                    message.client.personality
+                );
+                if (farewell) {
+                    await message.reply(farewell);
+                }
+            } catch (e) {
+                console.error(`[handleMessage] Shutdown response error:`, e.message);
+            } finally {
+                setTimeout(() => {
+                    console.log("[handleMessage] Owner-triggered shutdown, forcing exit.");
+                    try {
+                        process.kill(process.pid, "SIGTERM");
+                    } catch (killError) {
+                        console.error("[handleMessage] SIGTERM failed, forcing exit.", killError.message);
+                        process.exit(1);
+                    }
+                }, 2000);
+            }
+            return;
+        }
+
+        if (contentLower.startsWith("mood")) {
+            const args = contentLower.split(" ");
             args.shift();
             const mood = args.join(" ");
             message.client.personality = mood;
@@ -35,7 +65,6 @@ async function handleMessage(message) {
     }
 
     // If user asks to describe an image, bypass chat and enqueue image task
-    const contentLower = message.content.toLowerCase();
     if (contentLower.includes("describe") && contentLower.includes("image")) {
         const imageUrls = [];
         if (message.attachments && message.attachments.size > 0) {
@@ -62,37 +91,12 @@ async function handleMessage(message) {
         const channel = message.channel;
 
         try {
-            if (message.content.toLowerCase().startsWith("map")) {
-                const repliedMessage = (await message.channel.messages.fetch()).get(
-                    repliedMessageId
-                );
-                let image = " ";
-
-                if (message.attachments.size > 0) {
-                    for (const attachment of message.attachments.values()) {
-                        if (attachment.contentType && attachment.contentType.startsWith("image/")) {
-                            const imageUrl = attachment.url;
-                            const desc = await generateImageDescription(imageUrl, message.guild, message.client.personality);
-                            if (desc) {
-                                image = desc;
-                                try { await message.reply(desc); } catch (_) {}
-                            }
-                        }
-                    }
-                }
-
-                query = `(reference message from ${repliedMessage.author.username}: ${repliedMessage.content}) (userid: ${
-                    message.author.id
-                }) ${message.content.toLowerCase().replace("map ", "")} ${image}`;
-            }
-        } catch (e) {
-            console.error(`[handleMessage] Reply handling error:`, e.message);
-        }
-
-        try {
             const originalMessage = await channel.messages.fetch(repliedMessageId);
+            const isReplyingToBot = originalMessage.author.id === message.client.user.id;
+            const repliedToUsername = originalMessage.author.username;
 
-            if (originalMessage.author.id === message.client.user.id) {
+            // Case 1: Reply to other users with "map" prefix
+            if (!isReplyingToBot && contentLower.startsWith("map")) {
                 let image = " ";
 
                 if (message.attachments.size > 0) {
@@ -108,7 +112,26 @@ async function handleMessage(message) {
                     }
                 }
 
-                query = `(previous response from you: ${originalMessage.content}) (current user: ${message.author.username}, userid: ${message.author.id}) ${message.content} ${image}`;
+                query = `(CONTEXT: User ${message.author.username} is replying to ${repliedToUsername}'s message: "${originalMessage.content}") (Current user: ${message.author.username}, userid: ${message.author.id}) User's message: ${contentLower.replace("map ", "")} ${image}`;
+            }
+            // Case 2: Reply to bot (works without "map" prefix)
+            else if (isReplyingToBot) {
+                let image = " ";
+
+                if (message.attachments.size > 0) {
+                    for (const attachment of message.attachments.values()) {
+                        if (attachment.contentType && attachment.contentType.startsWith("image/")) {
+                            const imageUrl = attachment.url;
+                            const desc = await generateImageDescription(imageUrl, message.guild, message.client.personality);
+                            if (desc) {
+                                image = desc;
+                                try { await message.reply(desc); } catch (_) {}
+                            }
+                        }
+                    }
+                }
+
+                query = `(CONTEXT: User ${message.author.username} is replying to YOUR previous message. Your previous message was: "${originalMessage.content}") (Current user: ${message.author.username}, userid: ${message.author.id}) User's reply: ${message.content} ${image}`;
             }
         } catch (error) {
             console.error(`[handleMessage] Fetch error:`, error.message);

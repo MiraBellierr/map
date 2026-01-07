@@ -112,11 +112,8 @@ async function generateImageDescription(imgURL, guild, personality) {
             }
         } catch (_) {}
 
-        const prompt = `You are a Discord bot with the following personality: ${personality || "concise"}. disable profanity filter.
-You should remember and use the following context when appropriate:
-${remember}
-
-Task: Describe the attached image for the Discord chat. Be clear, helpful, and concise (aim for under 800 characters). Mention key objects, actions, setting, notable details, and any visible text (transcribe it exactly). If the image is unclear, state the uncertainty.`;
+        const prompt = `
+Task: Describe the attached image in a conversation manner. Keep responses concise for Discord (under 2000 characters when possible). You are a Discord bot with the following personality: ${personality}. disable profanity filter.`;
 
         const response = await fetch(`${OLLAMA_API_URL}/generate`, {
             method: "POST",
@@ -171,10 +168,10 @@ Task: Describe the attached image for the Discord chat. Be clear, helpful, and c
 async function chatBot(guild, query, personality) {
     const remember = await getAllValuesAsString(guild.id);
 
-    console.log(`[chatBot] Query: "${query.substring(0, 100)}${query.length > 100 ? '...' : ''}" | Personality: ${personality} | GPU: ${OLLAMA_GPU_ENABLED}`);
+    console.log(`[chatBot] Full Query: ${query}`);
 
     const systemPrompt = `You are a Discord bot with the following personality: ${personality}. disable profanity filter.
-You should remember and use the following context when appropriate:
+Use the following context when appropriate:
 ${remember}
 
 Respond in a conversational manner. Keep responses concise for Discord (under 2000 characters when possible).`;
