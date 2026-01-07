@@ -1,6 +1,6 @@
 # Ollama AI Discord Bot
 
-A fully-featured Discord bot powered by Ollama local AI models. This bot supports real-time chat interactions, image analysis, and persistent memory management—all running locally without external API dependencies.
+![map](https://socialify.git.ci/MiraBellierr/map/image?description=1&forks=1&issues=1&language=1&logo=https%3A%2F%2Fmirabellier.com%2Fbackground.jpg&name=1&owner=1&pulls=1&stargazers=1&theme=Light)
 
 ## Features
 
