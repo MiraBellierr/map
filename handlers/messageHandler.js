@@ -8,7 +8,7 @@ const {
 } = require("../services/memoryService");
 const { displayJsonAsArray, generateEmbed } = require("../utils/embeds");
 const { wait } = require("../utils/helpers");
-const { addToQueue } = require("./queueHandler");
+const { addToQueue, addToImageQueue } = require("./queueHandler");
 
 /**
  * Handles incoming Discord messages
@@ -34,6 +34,25 @@ async function handleMessage(message) {
         }
     }
 
+    // If user asks to describe an image, bypass chat and enqueue image task
+    const contentLower = message.content.toLowerCase();
+    if (contentLower.includes("describe") && contentLower.includes("image")) {
+        const imageUrls = [];
+        if (message.attachments && message.attachments.size > 0) {
+            for (const attachment of message.attachments.values()) {
+                if (attachment.contentType && attachment.contentType.startsWith("image/")) {
+                    imageUrls.push(attachment.url);
+                }
+            }
+        }
+        if (imageUrls.length === 0) {
+            await message.reply("Please attach an image to describe.");
+            return;
+        }
+        addToImageQueue(message, imageUrls);
+        return;
+    }
+
     let query;
     let search = false;
 
@@ -50,22 +69,24 @@ async function handleMessage(message) {
                 let image = " ";
 
                 if (message.attachments.size > 0) {
-                    message.attachments.forEach(async (attachment) => {
-                        if (attachment.contentType.startsWith("image/")) {
+                    for (const attachment of message.attachments.values()) {
+                        if (attachment.contentType && attachment.contentType.startsWith("image/")) {
                             const imageUrl = attachment.url;
-                            image = await generateImageDescription(imageUrl);
+                            const desc = await generateImageDescription(imageUrl, message.guild, message.client.personality);
+                            if (desc) {
+                                image = desc;
+                                try { await message.reply(desc); } catch (_) {}
+                            }
                         }
-                    });
-
-                    await wait(2000);
+                    }
                 }
 
-                query = `(reference message: ${repliedMessage.content}) (userid: ${
+                query = `(reference message from ${repliedMessage.author.username}: ${repliedMessage.content}) (userid: ${
                     message.author.id
                 }) ${message.content.toLowerCase().replace("map ", "")} ${image}`;
             }
         } catch (e) {
-            console.error("Error handling reply with map:", e);
+            console.error(`[handleMessage] Reply handling error:`, e.message);
         }
 
         try {
@@ -75,19 +96,22 @@ async function handleMessage(message) {
                 let image = " ";
 
                 if (message.attachments.size > 0) {
-                    message.attachments.forEach(async (attachment) => {
-                        if (attachment.contentType.startsWith("image/")) {
+                    for (const attachment of message.attachments.values()) {
+                        if (attachment.contentType && attachment.contentType.startsWith("image/")) {
                             const imageUrl = attachment.url;
-                            image = await generateImageDescription(imageUrl);
+                            const desc = await generateImageDescription(imageUrl, message.guild, message.client.personality);
+                            if (desc) {
+                                image = desc;
+                                try { await message.reply(desc); } catch (_) {}
+                            }
                         }
-                    });
-                    await wait(2000);
+                    }
                 }
 
-                query = `(previous response: ${originalMessage.content}) (userid: ${message.author.id}) ${message.content} ${image}`;
+                query = `(previous response from you: ${originalMessage.content}) (current user: ${message.author.username}, userid: ${message.author.id}) ${message.content} ${image}`;
             }
         } catch (error) {
-            console.error("Error fetching original message:", error);
+            console.error(`[handleMessage] Fetch error:`, error.message);
         }
     } 
     // Handle map command
@@ -95,17 +119,19 @@ async function handleMessage(message) {
         let image = " ";
 
         if (message.attachments.size > 0) {
-            message.attachments.forEach(async (attachment) => {
-                if (attachment.contentType.startsWith("image/")) {
+            for (const attachment of message.attachments.values()) {
+                if (attachment.contentType && attachment.contentType.startsWith("image/")) {
                     const imageUrl = attachment.url;
-                    image = await generateImageDescription(imageUrl);
-                    console.log(image);
+                    const desc = await generateImageDescription(imageUrl, message.guild, message.client.personality);
+                    if (desc) {
+                        image = desc;
+                        try { await message.reply(desc); } catch (_) {}
+                    }
                 }
-            });
-            await wait(2000);
+            }
         }
 
-        query = `(userid: ${message.author.id}) ${message.content
+        query = `(username: ${message.author.username}, userid: ${message.author.id}) ${message.content
             .toLowerCase()
             .replace("map ", "")} ${image}`;
     } 
@@ -131,7 +157,7 @@ async function handleMessage(message) {
         try {
             await message.channel.send({ files: [{ attachment: result.buffer, name: fileName }] });
         } catch (e) {
-            console.error("Error sending generated image:", e);
+            console.error(`[handleMessage] Image send error:`, e.message);
             await message.reply("Failed to send generated image.");
         }
         return;

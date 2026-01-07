@@ -21,7 +21,7 @@ const client = new Client({
 client.once("ready", async () => {
 	client.personality = "rude that always curses";
 	client.remember = await getAllValuesAsString();
-	console.log(`Logged in as ${client.user.tag}!`);
+	console.log(`[ready] Bot logged in: ${client.user.tag}`);
 
 	// Test Ollama connection
 	await testOllamaConnection();

@@ -1,8 +1,12 @@
 const { wait, splitMessage } = require("../utils/helpers");
-const { chatBot, scrapeSearchResults } = require("../services/ollamaService");
+const { chatBot, scrapeSearchResults, generateImageDescription } = require("../services/ollamaService");
 
 const queue = [];
 let isProcessing = false;
+
+// Separate queue for image descriptions
+const imageQueue = [];
+let isProcessingImages = false;
 
 /**
  * Processes the message queue one by one
@@ -30,7 +34,7 @@ async function processQueue() {
             await message.reply(msg).catch((e) => message.channel.send(e.message));
         }
     } catch (error) {
-        console.error("Error processing queue:", error);
+        console.error(`[processQueue] Error:`, error.message);
         await message.reply(
             "Failed to process request. Please try again."
         );
@@ -56,6 +60,56 @@ function addToQueue(message, query, search = false) {
     processQueue();
 }
 
+/**
+ * Processes the image description queue one by one
+ */
+async function processImageQueue() {
+    if (isProcessingImages || imageQueue.length === 0) return;
+
+    isProcessingImages = true;
+    const { message, imageUrls } = imageQueue.shift();
+
+    try {
+        await message.channel.sendTyping();
+
+        if (!imageUrls || imageUrls.length === 0) {
+            await message.reply("No image found to describe.");
+        } else {
+            for (const url of imageUrls) {
+                try {
+                    const desc = await generateImageDescription(url, message.guild, message.client.personality);
+                    const text = desc && typeof desc === "string" ? desc : "Failed to generate image description";
+                    await message.reply(text).catch((e) => message.channel.send(e.message));
+                    await wait(1000);
+                } catch (e) {
+                    await message.reply("Failed to generate image description");
+                }
+            }
+        }
+    } catch (error) {
+        console.error(`[processImageQueue] Error:`, error.message);
+        await message.reply("Image evaluation failed. Please try again.");
+    }
+
+    await wait(1000);
+
+    isProcessingImages = false;
+    if (imageQueue.length > 0) {
+        processImageQueue();
+    }
+}
+
+/**
+ * Adds an image description task to the separate queue
+ * @param {Object} message - Discord message object
+ * @param {string[]} imageUrls - Array of image URLs to describe
+ */
+function addToImageQueue(message, imageUrls) {
+    imageQueue.push({ message, imageUrls });
+    processImageQueue();
+}
+
 module.exports = {
     addToQueue,
+    addToImageQueue,
 };
