@@ -1,0 +1,231 @@
+const { ActionRowBuilder, ButtonBuilder } = require("discord.js");
+const { generateImageDescription, generateImageFromPrompt } = require("../services/ollamaService");
+const { 
+    checkAndCreateGuildFile, 
+    addItemToJsonFile, 
+    removeItemFromJsonFile,
+    readJsonFile
+} = require("../services/memoryService");
+const { displayJsonAsArray, generateEmbed } = require("../utils/embeds");
+const { wait } = require("../utils/helpers");
+const { addToQueue } = require("./queueHandler");
+
+/**
+ * Handles incoming Discord messages
+ * @param {Object} message - Discord message object
+ */
+async function handleMessage(message) {
+    if (message.author.bot) return;
+
+    const guildID = message.guild.id;
+    const serverName = message.guild.name;
+
+    await checkAndCreateGuildFile(guildID, serverName);
+
+    // Mood command (owner only)
+    if (message.author.id === "548050617889980426") {
+        if (message.content.toLowerCase().startsWith("mood")) {
+            const args = message.content.toLowerCase().split(" ");
+            args.shift();
+            const mood = args.join(" ");
+            message.client.personality = mood;
+            message.reply(`change mood to ${message.client.personality}`);
+            return;
+        }
+    }
+
+    let query;
+    let search = false;
+
+    // Handle reply messages
+    if (message.reference) {
+        const repliedMessageId = message.reference.messageId;
+        const channel = message.channel;
+
+        try {
+            if (message.content.toLowerCase().startsWith("map")) {
+                const repliedMessage = (await message.channel.messages.fetch()).get(
+                    repliedMessageId
+                );
+                let image = " ";
+
+                if (message.attachments.size > 0) {
+                    message.attachments.forEach(async (attachment) => {
+                        if (attachment.contentType.startsWith("image/")) {
+                            const imageUrl = attachment.url;
+                            image = await generateImageDescription(imageUrl);
+                        }
+                    });
+
+                    await wait(2000);
+                }
+
+                query = `(reference message: ${repliedMessage.content}) (userid: ${
+                    message.author.id
+                }) ${message.content.toLowerCase().replace("map ", "")} ${image}`;
+            }
+        } catch (e) {
+            console.error("Error handling reply with map:", e);
+        }
+
+        try {
+            const originalMessage = await channel.messages.fetch(repliedMessageId);
+
+            if (originalMessage.author.id === message.client.user.id) {
+                let image = " ";
+
+                if (message.attachments.size > 0) {
+                    message.attachments.forEach(async (attachment) => {
+                        if (attachment.contentType.startsWith("image/")) {
+                            const imageUrl = attachment.url;
+                            image = await generateImageDescription(imageUrl);
+                        }
+                    });
+                    await wait(2000);
+                }
+
+                query = `(previous response: ${originalMessage.content}) (userid: ${message.author.id}) ${message.content} ${image}`;
+            }
+        } catch (error) {
+            console.error("Error fetching original message:", error);
+        }
+    } 
+    // Handle map command
+    else if (message.content.toLowerCase().startsWith("map")) {
+        let image = " ";
+
+        if (message.attachments.size > 0) {
+            message.attachments.forEach(async (attachment) => {
+                if (attachment.contentType.startsWith("image/")) {
+                    const imageUrl = attachment.url;
+                    image = await generateImageDescription(imageUrl);
+                    console.log(image);
+                }
+            });
+            await wait(2000);
+        }
+
+        query = `(userid: ${message.author.id}) ${message.content
+            .toLowerCase()
+            .replace("map ", "")} ${image}`;
+    } 
+    // Handle search command
+    else if (message.content.toLowerCase().startsWith("!search")) {
+        query = message.content.toLowerCase().replace("!search ", "");
+        search = true;
+    } 
+    // Handle image generation command
+    else if (message.content.toLowerCase().startsWith("!img")) {
+        const prompt = message.content.slice(4).trim();
+        if (!prompt) {
+            return message.reply("Provide a prompt, e.g., !img a sunset over mountains");
+        }
+
+        await message.channel.sendTyping();
+        const result = await generateImageFromPrompt(prompt);
+        if (typeof result === "string") {
+            return message.reply(result);
+        }
+
+        const fileName = result.mime === "image/jpeg" ? "generated.jpg" : "generated.png";
+        try {
+            await message.channel.send({ files: [{ attachment: result.buffer, name: fileName }] });
+        } catch (e) {
+            console.error("Error sending generated image:", e);
+            await message.reply("Failed to send generated image.");
+        }
+        return;
+    }
+    // Handle remember command
+    else if (message.content.toLowerCase().startsWith("!remember")) {
+        const context = message.content.toLowerCase().replace("!remember ", "");
+
+        if (!context) return message.reply("What should I remember?");
+
+        message.channel.send(await addItemToJsonFile(guildID, context));
+        return;
+    } 
+    // Handle forget command
+    else if (message.content.toLowerCase().startsWith("!forget")) {
+        const contextId = message.content.toLowerCase().replace("!forget ", "");
+
+        if (!contextId)
+            return message.reply(
+                "What should I forget? You need to give the ID though!"
+            );
+
+        if (parseInt(contextId) <= 1) {
+            return message.reply("Cannot determine ID.");
+        }
+
+        message.channel.send(await removeItemFromJsonFile(guildID, contextId));
+        return;
+    } 
+    // Handle list command with pagination
+    else if (message.content.toLowerCase().startsWith("!list")) {
+        const jsonData = await readJsonFile(guildID);
+        const data = displayJsonAsArray(jsonData);
+        const itemsPerPage = 10;
+        let page = 0;
+
+        const embed = generateEmbed(data, page, itemsPerPage);
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId("previous")
+                .setLabel("Previous")
+                .setStyle("Secondary")
+                .setDisabled(page === 0),
+            new ButtonBuilder()
+                .setCustomId("next")
+                .setLabel("Next")
+                .setStyle("Secondary")
+                .setDisabled(data.length <= itemsPerPage)
+        );
+
+        const listMessage = await message.channel.send({ embeds: [embed], components: [row] });
+
+        const filter = (interaction) => {
+            return interaction.user.id === message.author.id;
+        };
+
+        const collector = listMessage.createMessageComponentCollector({ filter, time: 60000 });
+
+        collector.on("collect", async (interaction) => {
+            if (interaction.customId === "previous") {
+                page--;
+            } else if (interaction.customId === "next") {
+                page++;
+            }
+
+            const newEmbed = generateEmbed(data, page, itemsPerPage);
+            const newRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId("previous")
+                    .setLabel("Previous")
+                    .setStyle("Secondary")
+                    .setDisabled(page === 0),
+                new ButtonBuilder()
+                    .setCustomId("next")
+                    .setLabel("Next")
+                    .setStyle("Secondary")
+                    .setDisabled(data.length <= (page + 1) * itemsPerPage)
+            );
+
+            await interaction.update({ embeds: [newEmbed], components: [newRow] });
+        });
+
+        collector.on("end", () => {
+            listMessage.edit({ components: [] });
+        });
+        return;
+    }
+
+    // Add to queue if there's a query
+    if (query) {
+        addToQueue(message, query, search);
+    }
+}
+
+module.exports = {
+    handleMessage,
+};
