@@ -15,12 +15,10 @@ const client = new Client({
 	},
 	page: "",
 	personality: "rude",
-	remember: "None",
 }); 
 
 client.once("ready", async () => {
 	client.personality = "nice and cute";
-	client.remember = await getAllValuesAsString();
 	console.log(`[ready] Bot logged in: ${client.user.tag}`);
 
 	// Test Ollama connection

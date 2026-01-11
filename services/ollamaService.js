@@ -9,7 +9,7 @@ const {
     OLLAMA_NUM_THREADS,
     OLLAMA_NUM_GPU
 } = require("../config/constants");
-const { getAllValuesAsString } = require("./memoryService");
+const { getAllValuesAsString, addItemToJsonFile, updateMemoryItem, readJsonFile, writeJsonFile } = require("./memoryService");
 
 /**
  * Builds Ollama request options with GPU configuration
@@ -202,7 +202,99 @@ Respond in a conversational manner. Keep responses concise for Discord (under 20
         }
 
         const data = await response.json();
-        return data.message.content;
+        const botResponse = data.message.content;
+
+        // Extract new information to remember
+        try {
+            const existingData = await readJsonFile(guild.id);
+            const existingMemoryList = Object.entries(existingData)
+                .filter(([key]) => parseInt(key) >= 2) // Skip system entries
+                .map(([key, value]) => `${key}: ${value}`)
+                .join('\n');
+            
+            const extractionPrompt = `Analyze this conversation and extract any factual information that should be remembered for future reference. Consider the existing memory below.
+
+Existing memory:
+${existingMemoryList}
+
+Instructions:
+- Extract any new or updated information from the conversation
+- If information conflicts with existing memory, provide the updated version
+- Provide each piece of information as a concise summary (do not include indices like "2:")
+- Separate multiple items with |
+- If nothing to remember, respond with 'NONE'
+
+User query: ${query}
+Bot response: ${botResponse}`;
+
+            const extractionResponse = await fetch(`${OLLAMA_API_URL}/chat`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    model: OLLAMA_CHAT_MODEL,
+                    messages: [
+                        {
+                            role: "system",
+                            content: "You are an AI assistant that extracts memorable information from conversations. Provide concise summaries of facts to remember.",
+                        },
+                        {
+                            role: "user",
+                            content: extractionPrompt,
+                        },
+                    ],
+                    stream: false,
+                    ...getGPUOptions(),
+                }),
+            });
+
+            if (extractionResponse.ok) {
+                const extractionData = await extractionResponse.json();
+                const extractedInfo = extractionData.message.content.trim();
+
+                if (extractedInfo && extractedInfo.toUpperCase() !== 'NONE') {
+                    const items = extractedInfo.split('|').map(item => item.trim());
+                    
+                    for (const item of items) {
+                        if (item) {
+                            // Check if this item conflicts with existing memory
+                            const existingData = await readJsonFile(guild.id);
+                            let conflictFound = false;
+                            
+                            for (const [id, value] of Object.entries(existingData)) {
+                                if (parseInt(id) >= 2) { // Skip system entries
+                                    // Check for conflict using word overlap
+                                    const itemWords = item.toLowerCase().split(/\s+/);
+                                    const valueWords = value.toLowerCase().split(/\s+/);
+                                    
+                                    const skipWords = new Set(['the', 'a', 'an', 'is', 'are', 'was', 'were', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by']);
+                                    const itemImportant = itemWords.filter(word => !skipWords.has(word) && word.length > 2);
+                                    const valueImportant = valueWords.filter(word => !skipWords.has(word) && word.length > 2);
+                                    
+                                    const commonWords = itemImportant.filter(word => valueImportant.includes(word));
+                                    
+                                    if (commonWords.length >= 2) {
+                                        // Conflict found, delete the old entry
+                                        delete existingData[id];
+                                        await writeJsonFile(guild.id, existingData);
+                                        console.log(`[chatBot] Removed conflicting memory: ${value}`);
+                                        conflictFound = true;
+                                        break; // Only remove one conflicting entry
+                                    }
+                                }
+                            }
+                            
+                            // Add the new information
+                            await addItemToJsonFile(guild.id, item);
+                            console.log(`[chatBot] Remembered: ${item}`);
+                        }
+                    }
+                }
+            }
+        } catch (extractionError) {
+            console.error(`[chatBot] Extraction error:`, extractionError.message);
+        }
+
+        return botResponse;
     } catch (error) {
         console.error(`[chatBot] Ollama API error:`, error.message);
         throw error;

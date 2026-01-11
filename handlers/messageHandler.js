@@ -2,12 +2,8 @@ const { ActionRowBuilder, ButtonBuilder, EmbedBuilder } = require("discord.js");
 const os = require('os');
 const { chatBot, generateImageDescription, generateImageFromPrompt } = require("../services/ollamaService");
 const { 
-    checkAndCreateGuildFile, 
-    addItemToJsonFile, 
-    removeItemFromJsonFile,
-    readJsonFile
+    checkAndCreateGuildFile
 } = require("../services/memoryService");
-const { displayJsonAsArray, generateEmbed } = require("../utils/embeds");
 const { wait } = require("../utils/helpers");
 const { addToQueue, addToImageQueue } = require("./queueHandler");
 const { PREFIX, PROMPT_TRIGGER, OLLAMA_GPU_ENABLED, OLLAMA_GPU_LAYERS, OLLAMA_NUM_GPU } = require("../config/constants");
@@ -224,95 +220,6 @@ async function handleMessage(message) {
             console.error(`[handleMessage] Image send error:`, e.message);
             await message.reply("Failed to send generated image.");
         }
-        return;
-    }
-    // Handle remember command
-    else if (message.content.toLowerCase().startsWith(`${PREFIX}remember`)) {
-        const context = message.content.toLowerCase().replace("!remember ", "");
-
-        if (!context) return message.reply("What should I remember?");
-
-        message.channel.send(await addItemToJsonFile(guildID, context));
-        return;
-    } 
-    // Handle forget command
-    else if (message.content.toLowerCase().startsWith(`${PREFIX}forget`)) {
-        const contextId = message.content.toLowerCase().replace("!forget ", "");
-
-        if (!contextId)
-            return message.reply(
-                "What should I forget? You need to give the ID though!"
-            );
-
-        if (parseInt(contextId) <= 1) {
-            return message.reply("Cannot determine ID.");
-        }
-
-        message.channel.send(await removeItemFromJsonFile(guildID, contextId));
-        return;
-    } 
-    // Handle list command with pagination
-    else if (message.content.toLowerCase().startsWith(`${PREFIX}list`)) {
-        const jsonData = await readJsonFile(guildID);
-        const data = displayJsonAsArray(jsonData);
-        
-        if (data.length === 0) {
-            await message.reply("Remember log is empty!");
-            return;
-        }
-        
-        const itemsPerPage = 10;
-        let page = 0;
-
-        const embed = generateEmbed(data, page, itemsPerPage);
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId("previous")
-                .setLabel("Previous")
-                .setStyle("Secondary")
-                .setDisabled(page === 0),
-            new ButtonBuilder()
-                .setCustomId("next")
-                .setLabel("Next")
-                .setStyle("Secondary")
-                .setDisabled(data.length <= itemsPerPage)
-        );
-
-        const listMessage = await message.channel.send({ embeds: [embed], components: [row] });
-
-        const filter = (interaction) => {
-            return interaction.user.id === message.author.id;
-        };
-
-        const collector = listMessage.createMessageComponentCollector({ filter, time: 60000 });
-
-        collector.on("collect", async (interaction) => {
-            if (interaction.customId === "previous") {
-                page--;
-            } else if (interaction.customId === "next") {
-                page++;
-            }
-
-            const newEmbed = generateEmbed(data, page, itemsPerPage);
-            const newRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId("previous")
-                    .setLabel("Previous")
-                    .setStyle("Secondary")
-                    .setDisabled(page === 0),
-                new ButtonBuilder()
-                    .setCustomId("next")
-                    .setLabel("Next")
-                    .setStyle("Secondary")
-                    .setDisabled(data.length <= (page + 1) * itemsPerPage)
-            );
-
-            await interaction.update({ embeds: [newEmbed], components: [newRow] });
-        });
-
-        collector.on("end", () => {
-            listMessage.edit({ components: [] });
-        });
         return;
     }
     // Handle info command
