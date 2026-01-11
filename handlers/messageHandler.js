@@ -253,6 +253,12 @@ async function handleMessage(message) {
     else if (message.content.toLowerCase().startsWith("!list")) {
         const jsonData = await readJsonFile(guildID);
         const data = displayJsonAsArray(jsonData);
+        
+        if (data.length === 0) {
+            await message.reply("Remember log is empty!");
+            return;
+        }
+        
         const itemsPerPage = 10;
         let page = 0;
 
