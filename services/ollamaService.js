@@ -174,7 +174,7 @@ async function chatBot(guild, query, personality) {
 Use the following context when appropriate:
 ${remember}
 
-Respond in a conversational manner. Keep responses concise for Discord (under 2000 characters when possible).`;
+Respond in a conversational manner. Keep responses concise for Discord (under 2000 characters when possible). dont include "(username):" format`;
 
     try {
         const response = await fetch(`${OLLAMA_API_URL}/chat`, {

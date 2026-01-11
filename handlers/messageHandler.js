@@ -21,6 +21,11 @@ async function handleMessage(message) {
     const serverName = message.guild.name;
     const contentLower = message.content.toLowerCase();
 
+    // Helper to get nickname or username
+    function getDisplayName(member) {
+        return (member && member.nickname) ? member.nickname : (member && member.user && member.user.username) ? member.user.username : member?.username || "Unknown";
+    }
+
     await checkAndCreateGuildFile(guildID, serverName);
 
     // Mood command (owner only)
@@ -92,8 +97,40 @@ async function handleMessage(message) {
 
         try {
             const originalMessage = await channel.messages.fetch(repliedMessageId);
+
+            // Fetch the full chain of replied messages (up to a safe depth)
+            const replyChain = [];
+            let currentMessage = originalMessage;
+            replyChain.unshift(currentMessage); // immediate replied message at the end
+
+            const MAX_CHAIN = 10;
+            while (
+                currentMessage &&
+                currentMessage.reference &&
+                currentMessage.reference.messageId &&
+                replyChain.length < MAX_CHAIN
+            ) {
+                try {
+                    const parent = await channel.messages.fetch(currentMessage.reference.messageId);
+                    if (!parent) break;
+                    replyChain.unshift(parent); // keep oldest-first order
+                    currentMessage = parent;
+                } catch (e) {
+                    break;
+                }
+            }
+
             const isReplyingToBot = originalMessage.author.id === message.client.user.id;
-            const repliedToUsername = originalMessage.author.username;
+            // Get display names for context
+            const repliedToMember = message.guild.members.cache.get(originalMessage.author.id);
+            const currentMember = message.guild.members.cache.get(message.author.id);
+            const repliedToDisplayName = getDisplayName(repliedToMember) || originalMessage.author.username;
+            const currentDisplayName = getDisplayName(currentMember) || message.author.username;
+            const previousContext = replyChain.map(m => {
+                const member = message.guild.members.cache.get(m.author.id);
+                const displayName = getDisplayName(member) || m.author.username;
+                return `${displayName}: ${m.content}`;
+            }).join(' | ');
 
             // Case 1: Reply to other users with "map" prefix
             if (!isReplyingToBot && contentLower.startsWith("map")) {
@@ -112,7 +149,7 @@ async function handleMessage(message) {
                     }
                 }
 
-                query = `(CONTEXT: User ${message.author.username} is replying to ${repliedToUsername}'s message: "${originalMessage.content}") (Current user: ${message.author.username}, userid: ${message.author.id}) User's message: ${contentLower.replace("map ", "")} ${image}`;
+                query = `(CONTEXT: User ${currentDisplayName} is replying to ${repliedToDisplayName}'s message(s): "${previousContext}") (Current user: ${currentDisplayName}, userid: ${message.author.id}) User's message: ${contentLower.replace("map ", "")} ${image}`;
             }
             // Case 2: Reply to bot (works without "map" prefix)
             else if (isReplyingToBot) {
@@ -131,7 +168,7 @@ async function handleMessage(message) {
                     }
                 }
 
-                query = `(CONTEXT: User ${message.author.username} is replying to YOUR previous message. Your previous message was: "${originalMessage.content}") (Current user: ${message.author.username}, userid: ${message.author.id}) User's reply: ${message.content} ${image}`;
+                query = `(CONTEXT: User ${currentDisplayName} is replying to YOUR previous message(s). Your previous messages were: "${previousContext}") (Current user: ${currentDisplayName}, userid: ${message.author.id}) User's reply: ${message.content} ${image}`;
             }
         } catch (error) {
             console.error(`[handleMessage] Fetch error:`, error.message);
@@ -154,7 +191,9 @@ async function handleMessage(message) {
             }
         }
 
-        query = `(username: ${message.author.username}, userid: ${message.author.id}) ${message.content
+        const currentMember = message.guild.members.cache.get(message.author.id);
+        const currentDisplayName = getDisplayName(currentMember) || message.author.username;
+        query = `(username: ${currentDisplayName}, userid: ${message.author.id}) ${message.content
             .toLowerCase()
             .replace("map ", "")} ${image}`;
     } 

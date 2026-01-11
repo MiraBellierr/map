@@ -26,6 +26,30 @@ async function processQueue() {
         } else {
             result = await chatBot(message.guild, query, message.client.personality);
         }
+
+        // Fetch all emotes from the server
+        const emotes = message.guild.emojis.cache;
+        if (emotes.size > 0) {
+            // Choose an appropriate emote based on the response content
+            let selectedEmote = null;
+            const lowerResult = result.toLowerCase();
+            
+            // Simple appropriateness check: if response contains positive words, prefer animated emotes or specific ones
+            if (lowerResult.includes('cute') || lowerResult.includes('nice') || lowerResult.includes('good') || lowerResult.includes('love')) {
+                // Try to find an emote with 'cute' or 'heart' in name, or animated
+                selectedEmote = emotes.find(e => e.name.toLowerCase().includes('cute') || e.name.toLowerCase().includes('heart') || e.animated);
+            }
+            
+            if (!selectedEmote) {
+                // Fallback to random emote
+                selectedEmote = emotes.random();
+            }
+            
+            if (selectedEmote) {
+                result += ' ' + selectedEmote.toString();
+            }
+        }
+
         const messages = splitMessage(
             result || "There was an error generating a response. Please try again."
         );
@@ -78,7 +102,27 @@ async function processImageQueue() {
             for (const url of imageUrls) {
                 try {
                     const desc = await generateImageDescription(url, message.guild, message.client.personality);
-                    const text = desc && typeof desc === "string" ? desc : "Failed to generate image description";
+                    let text = desc && typeof desc === "string" ? desc : "Failed to generate image description";
+
+                    // Add appropriate emote to image description
+                    const emotes = message.guild.emojis.cache;
+                    if (emotes.size > 0) {
+                        const lowerText = text.toLowerCase();
+                        let selectedEmote = null;
+                        
+                        if (lowerText.includes('cute') || lowerText.includes('nice') || lowerText.includes('beautiful') || lowerText.includes('amazing')) {
+                            selectedEmote = emotes.find(e => e.name.toLowerCase().includes('cute') || e.name.toLowerCase().includes('heart') || e.animated);
+                        }
+                        
+                        if (!selectedEmote) {
+                            selectedEmote = emotes.random();
+                        }
+                        
+                        if (selectedEmote) {
+                            text += ' ' + selectedEmote.toString();
+                        }
+                    }
+
                     await message.reply(text).catch((e) => message.channel.send(e.message));
                     await wait(1000);
                 } catch (e) {
