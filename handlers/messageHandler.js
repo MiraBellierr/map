@@ -1,4 +1,5 @@
-const { ActionRowBuilder, ButtonBuilder } = require("discord.js");
+const { ActionRowBuilder, ButtonBuilder, EmbedBuilder } = require("discord.js");
+const os = require('os');
 const { chatBot, generateImageDescription, generateImageFromPrompt } = require("../services/ollamaService");
 const { 
     checkAndCreateGuildFile, 
@@ -9,6 +10,7 @@ const {
 const { displayJsonAsArray, generateEmbed } = require("../utils/embeds");
 const { wait } = require("../utils/helpers");
 const { addToQueue, addToImageQueue } = require("./queueHandler");
+const { PREFIX, PROMPT_TRIGGER, OLLAMA_GPU_ENABLED, OLLAMA_GPU_LAYERS, OLLAMA_NUM_GPU } = require("../config/constants");
 
 /**
  * Handles incoming Discord messages
@@ -133,7 +135,7 @@ async function handleMessage(message) {
             }).join(' | ');
 
             // Case 1: Reply to other users with "map" prefix
-            if (!isReplyingToBot && contentLower.startsWith("map")) {
+            if (!isReplyingToBot && contentLower.startsWith(PROMPT_TRIGGER)) {
                 let image = " ";
 
                 if (message.attachments.size > 0) {
@@ -175,7 +177,7 @@ async function handleMessage(message) {
         }
     } 
     // Handle map command
-    else if (message.content.toLowerCase().startsWith("map")) {
+    else if (message.content.toLowerCase().startsWith(PROMPT_TRIGGER)) {
         let image = " ";
 
         if (message.attachments.size > 0) {
@@ -198,12 +200,12 @@ async function handleMessage(message) {
             .replace("map ", "")} ${image}`;
     } 
     // Handle search command
-    else if (message.content.toLowerCase().startsWith("!search")) {
+    else if (message.content.toLowerCase().startsWith(`${PREFIX}search`)) {
         query = message.content.toLowerCase().replace("!search ", "");
         search = true;
     } 
     // Handle image generation command
-    else if (message.content.toLowerCase().startsWith("!img")) {
+    else if (message.content.toLowerCase().startsWith(`${PREFIX}img`)) {
         const prompt = message.content.slice(4).trim();
         if (!prompt) {
             return message.reply("Provide a prompt, e.g., !img a sunset over mountains");
@@ -225,7 +227,7 @@ async function handleMessage(message) {
         return;
     }
     // Handle remember command
-    else if (message.content.toLowerCase().startsWith("!remember")) {
+    else if (message.content.toLowerCase().startsWith(`${PREFIX}remember`)) {
         const context = message.content.toLowerCase().replace("!remember ", "");
 
         if (!context) return message.reply("What should I remember?");
@@ -234,7 +236,7 @@ async function handleMessage(message) {
         return;
     } 
     // Handle forget command
-    else if (message.content.toLowerCase().startsWith("!forget")) {
+    else if (message.content.toLowerCase().startsWith(`${PREFIX}forget`)) {
         const contextId = message.content.toLowerCase().replace("!forget ", "");
 
         if (!contextId)
@@ -250,7 +252,7 @@ async function handleMessage(message) {
         return;
     } 
     // Handle list command with pagination
-    else if (message.content.toLowerCase().startsWith("!list")) {
+    else if (message.content.toLowerCase().startsWith(`${PREFIX}list`)) {
         const jsonData = await readJsonFile(guildID);
         const data = displayJsonAsArray(jsonData);
         
@@ -311,6 +313,40 @@ async function handleMessage(message) {
         collector.on("end", () => {
             listMessage.edit({ components: [] });
         });
+        return;
+    }
+    // Handle info command
+    else if (message.content.toLowerCase().startsWith(`${PREFIX}info`)) {
+        const totalRam = os.totalmem();
+        const freeRam = os.freemem();
+        const usedRam = totalRam - freeRam;
+        const ramUsage = `${(usedRam / totalRam * 100).toFixed(2)}% (${(usedRam / 1024 / 1024 / 1024).toFixed(2)} GB / ${(totalRam / 1024 / 1024 / 1024).toFixed(2)} GB)`;
+
+        const osName = os.platform();
+        const memoryUsage = process.memoryUsage();
+        const heapUsed = `${(memoryUsage.heapUsed / 1024 / 1024).toFixed(2)} MB`;
+
+        const ping = `${message.client.ws.ping} ms`;
+
+        const cpus = os.cpus();
+        const cpuModel = cpus[0].model;
+        const cpuCores = cpus.length;
+
+        const gpuInfo = OLLAMA_GPU_ENABLED ? `Enabled (${OLLAMA_GPU_LAYERS} layers, ${OLLAMA_NUM_GPU} GPU(s))` : 'Disabled';
+
+        const embed = new EmbedBuilder()
+            .setTitle('Bot Info')
+            .addFields(
+                { name: 'OS', value: osName, inline: true },
+                { name: 'CPU', value: `${cpuModel} (${cpuCores} cores)`, inline: true },
+                { name: 'RAM Usage', value: ramUsage, inline: false },
+                { name: 'Memory Usage (Heap)', value: heapUsed, inline: true },
+                { name: 'GPU (Ollama)', value: gpuInfo, inline: true },
+                { name: 'Ping', value: ping, inline: true }
+            )
+            .setColor('#0099ff');
+
+        await message.reply({ embeds: [embed] });
         return;
     }
 

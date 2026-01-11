@@ -17,6 +17,8 @@ const DCOLON_CHANNEL = process.env.DCOLON_CHANNEL || "1282597999658143776";
 
 // Discord configuration
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+const PREFIX = process.env.PREFIX || "!";
+const PROMPT_TRIGGER = process.env.PROMPT_TRIGGER || "map";
 
 // File paths
 const REMEMBER_FILE = "./remember.json";
@@ -31,6 +33,8 @@ module.exports = {
     OLLAMA_NUM_THREADS,
     OLLAMA_NUM_GPU,
     DISCORD_TOKEN,
+    PREFIX,
+    PROMPT_TRIGGER,
     REMEMBER_FILE,
     DCOLON,
     DCOLON_CHANNEL,

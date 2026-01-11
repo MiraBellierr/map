@@ -18,6 +18,9 @@ async function processQueue() {
     const { message, query, search } = queue.shift();
 
     await message.channel.sendTyping();
+    const typingInterval = setInterval(() => {
+        message.channel.sendTyping().catch(() => {});
+    }, 10000);
 
     try {
         let result;
@@ -57,11 +60,13 @@ async function processQueue() {
         for (const msg of messages) {
             await message.reply(msg).catch((e) => message.channel.send(e.message));
         }
+        clearInterval(typingInterval);
     } catch (error) {
         console.error(`[processQueue] Error:`, error.message);
         await message.reply(
             "Failed to process request. Please try again."
         );
+        clearInterval(typingInterval);
     }
 
     await wait(3000);
@@ -95,9 +100,13 @@ async function processImageQueue() {
 
     try {
         await message.channel.sendTyping();
+        const typingInterval = setInterval(() => {
+            message.channel.sendTyping().catch(() => {});
+        }, 10000);
 
         if (!imageUrls || imageUrls.length === 0) {
             await message.reply("No image found to describe.");
+            clearInterval(typingInterval);
         } else {
             for (const url of imageUrls) {
                 try {
@@ -129,10 +138,12 @@ async function processImageQueue() {
                     await message.reply("Failed to generate image description");
                 }
             }
+            clearInterval(typingInterval);
         }
     } catch (error) {
         console.error(`[processImageQueue] Error:`, error.message);
         await message.reply("Image evaluation failed. Please try again.");
+        clearInterval(typingInterval);
     }
 
     await wait(1000);
