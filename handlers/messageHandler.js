@@ -2,7 +2,8 @@ const { ActionRowBuilder, ButtonBuilder, EmbedBuilder } = require("discord.js");
 const os = require('os');
 const { chatBot, generateImageDescription, generateImageFromPrompt } = require("../services/ollamaService");
 const { 
-    checkAndCreateGuildFile
+    checkAndCreateGuildFile,
+    readJsonFile
 } = require("../services/memoryService");
 const { wait } = require("../utils/helpers");
 const { addToQueue, addToImageQueue } = require("./queueHandler");
@@ -13,7 +14,11 @@ const { PREFIX, PROMPT_TRIGGER, OLLAMA_GPU_ENABLED, OLLAMA_GPU_LAYERS, OLLAMA_NU
  * @param {Object} message - Discord message object
  */
 async function handleMessage(message) {
-    if (message.author.bot) return;
+    // Ignore messages from this bot itself
+    if (message.author.id === message.client.user.id) {
+        console.log(`[handleMessage] Ignoring message from self: ${message.author.username}`);
+        return;
+    }
 
     const guildID = message.guild.id;
     const serverName = message.guild.name;
@@ -147,7 +152,7 @@ async function handleMessage(message) {
                     }
                 }
 
-                query = `(CONTEXT: User ${currentDisplayName} is replying to ${repliedToDisplayName}'s message(s): "${previousContext}") (Current user: ${currentDisplayName}, userid: ${message.author.id}) User's message: ${contentLower.replace("map ", "")} ${image}`;
+                query = `(CONTEXT: User ${currentDisplayName} is replying to ${repliedToDisplayName}'s message(s): "${previousContext}") (Current user: ${currentDisplayName}, userid: ${message.author.id}) User's message: ${contentLower.replace(`${PROMPT_TRIGGER} `, "")} ${image}`;
             }
             // Case 2: Reply to bot (works without "map" prefix)
             else if (isReplyingToBot) {
@@ -193,7 +198,7 @@ async function handleMessage(message) {
         const currentDisplayName = getDisplayName(currentMember) || message.author.username;
         query = `(username: ${currentDisplayName}, userid: ${message.author.id}) ${message.content
             .toLowerCase()
-            .replace("map ", "")} ${image}`;
+            .replace(`${PROMPT_TRIGGER} `, "")} ${image}`;
     } 
     // Handle search command
     else if (message.content.toLowerCase().startsWith(`${PREFIX}search`)) {
@@ -220,6 +225,88 @@ async function handleMessage(message) {
             console.error(`[handleMessage] Image send error:`, e.message);
             await message.reply("Failed to send generated image.");
         }
+        return;
+    }
+    // Handle list command with pagination
+    else if (message.content.toLowerCase().startsWith(`${PREFIX}list`)) {
+        const jsonData = await readJsonFile(guildID);
+        const memoryEntries = Object.entries(jsonData)
+            .filter(([key]) => parseInt(key) >= 2) // Skip system entries
+            .map(([key, value]) => `${key}: ${value}`);
+        
+        if (memoryEntries.length === 0) {
+            await message.reply("Memory is empty!");
+            return;
+        }
+        
+        const itemsPerPage = 10;
+        let page = 0;
+
+        const generateEmbed = (page) => {
+            const start = page * itemsPerPage;
+            const end = start + itemsPerPage;
+            const pageData = memoryEntries.slice(start, end);
+            
+            const description = pageData.join('\n');
+            
+            const embed = new EmbedBuilder()
+                .setTitle('Memory List')
+                .setDescription(description)
+                .setColor('#0099ff')
+                .setFooter({ text: `Page ${page + 1} of ${Math.ceil(memoryEntries.length / itemsPerPage)}` });
+            
+            return embed;
+        };
+
+        const embed = generateEmbed(page);
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId("previous")
+                .setLabel("Previous")
+                .setStyle("Secondary")
+                .setDisabled(page === 0),
+            new ButtonBuilder()
+                .setCustomId("next")
+                .setLabel("Next")
+                .setStyle("Secondary")
+                .setDisabled(memoryEntries.length <= itemsPerPage)
+        );
+
+        const listMessage = await message.channel.send({ embeds: [embed], components: [row] });
+
+        const filter = (interaction) => {
+            return interaction.user.id === message.author.id;
+        };
+
+        const collector = listMessage.createMessageComponentCollector({ filter, time: 60000 });
+
+        collector.on("collect", async (interaction) => {
+            if (interaction.customId === "previous") {
+                page--;
+            } else if (interaction.customId === "next") {
+                page++;
+            }
+
+            const newEmbed = generateEmbed(page);
+            const newRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId("previous")
+                    .setLabel("Previous")
+                    .setStyle("Secondary")
+                    .setDisabled(page === 0),
+                new ButtonBuilder()
+                    .setCustomId("next")
+                    .setLabel("Next")
+                    .setStyle("Secondary")
+                    .setDisabled((page + 1) * itemsPerPage >= memoryEntries.length)
+            );
+
+            await interaction.update({ embeds: [newEmbed], components: [newRow] });
+        });
+
+        collector.on("end", () => {
+            listMessage.edit({ components: [] });
+        });
         return;
     }
     // Handle info command
@@ -259,6 +346,7 @@ async function handleMessage(message) {
 
     // Add to queue if there's a query
     if (query) {
+        console.log(`[handleMessage] Received message from ${message.author.username} in guild ${message.guild.name}, adding to queue`);
         addToQueue(message, query, search);
     }
 }

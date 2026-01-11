@@ -17,6 +17,7 @@ const DCOLON_CHANNEL = process.env.DCOLON_CHANNEL || "1282597999658143776";
 
 // Discord configuration
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+const BOT_NAME = process.env.BOT_NAME || "Jasmine 🌼";
 const PREFIX = process.env.PREFIX || "!";
 const PROMPT_TRIGGER = process.env.PROMPT_TRIGGER || "map";
 
@@ -33,6 +34,7 @@ module.exports = {
     OLLAMA_NUM_THREADS,
     OLLAMA_NUM_GPU,
     DISCORD_TOKEN,
+    BOT_NAME,
     PREFIX,
     PROMPT_TRIGGER,
     REMEMBER_FILE,

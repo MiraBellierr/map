@@ -17,6 +17,8 @@ async function processQueue() {
     isProcessing = true;
     const { message, query, search } = queue.shift();
 
+    console.log(`[processQueue] Processing message from ${message.author.username} in guild ${message.guild.name}: "${query}"`);
+
     await message.channel.sendTyping();
     const typingInterval = setInterval(() => {
         message.channel.sendTyping().catch(() => {});
@@ -72,6 +74,7 @@ async function processQueue() {
     await wait(3000);
 
     isProcessing = false;
+    console.log(`[processQueue] Finished processing message. Queue length: ${queue.length}`);
 
     if (queue.length > 0) {
         processQueue();
@@ -86,6 +89,7 @@ async function processQueue() {
  */
 function addToQueue(message, query, search = false) {
     queue.push({ message, query, search });
+    console.log(`[addToQueue] Added message to queue. Queue length: ${queue.length}`);
     processQueue();
 }
 
